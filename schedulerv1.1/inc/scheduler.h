@@ -3,53 +3,18 @@
 
 #include "scheduler_config.h"
 
-#define LOGIC_FALSE                              ( ( base_type_t ) 0 )
-#define LOGIC_TRUE                               ( ( base_type_t ) 1 )
-
-#define EXE_PASS                                 ( LOGIC_FALSE )
-#define EXE_FAIL                                 ( LOGIC_TRUE )
-
-/* Task is aperiodic. */
-#define APERIODIC_TASK 0
-
-/* Task delay falg. */
-#define TASK_DELAY_ONGOING 1
-#define TASK_DELAY_ENDING 0
-
-/* The maximum number of message received by the task. */
-#define MAX_MESSAGE_NUMBER 16
-
-/* Task message is empty. */
-#define TASK_MESSAGE_IS_EMPTY 255
-
-/* The number of task priorities. */
-#define TASK_PRIORITY_NUMBER 3
-
-/* The number of message priorities. */
-#define MESSAGE_PRIORITY_NUMBER 3
-
-/* enmu task priority. */
-enum _task_priority
+/* The state of scheduler. */
+enum _scheduler_state
 {
-    TASK_PRIORITY_HIGH = 0,
-    TASK_PRIORITY_MID,
-    TASK_PRIORITY_LOW,
+    UNINITIALIZED = 0,  /* The scheduler being queried is UNINITIALIZED. Schedulder has not been initialized. */
+    INITIALIZED,        /* The scheduler being queried is INITIALIZED. Schedulder has already initialized. */
+    STOPPED,            /* The scheduler being queried is STOPPED. Schedulder has been stopped. */
+    DISPATCHING,        /* The scheduler being queried is DISPATCHING. Schedulder is working. */
 };
-typedef enum _task_priority task_priority_e;
-
-/* enmu message priority. */
-enum _message_priority
-{
-    MESSAGE_PRIORITY_HIGH = 0,
-    MESSAGE_PRIORITY_MID,
-    MESSAGE_PRIORITY_LOW,
-};
-typedef enum _message_priority message_priority_e;
+typedef enum _scheduler_state scheduler_state_e;
 
 
 /*
- * Function name: scheduler_init().
- *
  * Must be called before starting scheduling. it will initialize the task
  * pool and registry.
  *
@@ -59,8 +24,6 @@ typedef enum _message_priority message_priority_e;
 void scheduler_init(void);
 
 /*
- * Function name: scheduler_execute_task().
- *
  * Scheduler execution module will constantly try to obtain a ready task from
  * the ready list and execute the processing function of ready task.
  *
@@ -72,8 +35,6 @@ void scheduler_init(void);
 void scheduler_execute_task(void * task_list_ready);
 
 /*
- * Function name: scheduler_start().
- *
  * The scheduler starts to work.
  *
  * \page scheduler_start scheduler_start
@@ -82,8 +43,6 @@ void scheduler_execute_task(void * task_list_ready);
 void scheduler_start(void);
 
 /*
- * Function name: scheduler_end().
- *
  * Not implemented yet!
  * 
  * \page scheduler_end scheduler_end

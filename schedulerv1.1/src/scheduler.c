@@ -2,11 +2,15 @@
 #include "scheduler.h"
 #include "task.h"
 
+static scheduler_state_e scheduler_state = UNINITIALIZED;
+
 void scheduler_init(void)
 {
     /* initialize registry and task pool */
-    registry_init();
-    task_pool_init();
+    if (EXE_PASS == registry_init() && EXE_PASS == task_pool_init())
+    {
+        scheduler_state = INITIALIZED;
+    }
 }
 
 void scheduler_execute_task(void* ready_list)
@@ -105,9 +109,14 @@ void scheduler_start(void)
     ubase_type_t ready_number[TASK_PRIORITY_NUMBER] = {0};
     list_t* ready_list = NULL;
 
-    while (1)
+    if (INITIALIZED == scheduler_state)
     {
-        for(int task_priority = 0; i < TASK_PRIORITY_NUMBER; task_priority++)
+        scheduler_state = DISPATCHING;
+    }
+
+    while (DISPATCHING == scheduler_state)
+    {
+        for(int task_priority = 0; task_priority < TASK_PRIORITY_NUMBER; task_priority++)
         {
             ready_list = task_list_ready_point_get(task_priority);
             
@@ -131,4 +140,9 @@ void scheduler_start(void)
             }
         }
     }
+}
+
+void scheduler_end()
+{
+    scheduler_state = STOPPED;
 }

@@ -28,16 +28,13 @@ task_tcb_t task9_tcb;
 void task10(void* task_tcb);
 task_tcb_t task10_tcb;
 
-extern list_t* task_list_ready[TASK_PRIORITY_NUMBER];
-extern list_t* task_list_suspend;
-extern list_t* task_list_block;
-extern list_t * task_list_ready[3];
+
 int main()
 {
     UserTimerSet(1, systick_handler);
     scheduler_init();
 
-    task_create(task1, "task1", 0, TASK_PRIORITY_HIGH, 10, &task1_tcb);
+    task_create(task1, "task1", 0, TASK_PRIORITY_HIGH, 0, &task1_tcb);
     task_create(task2, "task2", 0, TASK_PRIORITY_HIGH, 20, &task2_tcb);
     task_create(task3, "task3", 0, TASK_PRIORITY_HIGH, 30, &task3_tcb);
     task_create(task4, "task4", 0, TASK_PRIORITY_HIGH, 40, &task4_tcb);
@@ -56,6 +53,12 @@ int main()
 
 void task1(void* task_tcb)
 {
+    static int i = 0;
+    if (i == 0)
+    {
+        task_delay(1000);
+        i = 1;
+    }
     base_type_t cur_tick = task_tick_count_get();
     printf("%lu:task1 is working!\n", cur_tick);
     return;
@@ -117,9 +120,15 @@ void task10(void* task_tcb)
 
 void systick_handler(void)
 {
+    static int cnt = 0;
     task_tick_increment();//Affect task pool
-    //if (task_tick_count_get() == 500)
-    //{
-    //    task_delete(&task1_tcb);
-    //}
+    if (cnt == 100 || cnt == 500 || cnt == 1000)
+    {
+        task_message_transmit(&task1_tcb, 1, MESSAGE_PRIORITY_HIGH);
+    }
+    if(cnt == 10000)
+    {
+        scheduler_end();
+    }
+    cnt++;
 }
