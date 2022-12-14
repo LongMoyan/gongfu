@@ -22,6 +22,31 @@ list_t * task_list_block_overflow = NULL;
  */
 task_registry_t * registry;
 
+
+/*
+ * Function name: task_set_wake_up_tick().
+ *
+ * Set the wake-up ticks for the task blocking.
+ *
+ * @param list_item The task state list item.
+ *
+ * @param wake_up_tick Task wake-up ticks.
+ *
+ * @return The number of current task ticks.
+ *
+ * \page task_set_wake_up_tick task_set_wake_up_tick
+ * \ingroup task
+ */
+static void task_set_wake_up_tick(list_item_t* list_item, tick_type_t wake_up_tick)
+{
+    if (NULL == list_item)
+    {
+        return ;
+    }
+
+    list_item->item_value = wake_up_tick;
+}
+
 /*
  * Function name: add_current_task_to_block_list().
  *
@@ -56,7 +81,7 @@ static void add_current_task_to_block_list(tick_type_t tick_to_delay, base_type_
         /* The list item will be inserted in wake time order. */
         task_set_wake_up_tick(&(task_current_running_tcb->task_state_list_item), task_tick_to_wake);
         
-        task_current_running_tcb->task_timing_flag = TASK_DELAY_ONGOING;
+        task_current_running_tcb->task_delay_flag = TASK_DELAY_ONGOING;
         task_current_running_tcb->task_start_delay_tick_overflow_count = task_tick_overflow_count;
         task_current_running_tcb->task_wake_up_tick = task_tick_to_wake;
 
@@ -73,30 +98,6 @@ static void add_current_task_to_block_list(tick_type_t tick_to_delay, base_type_
             task_current_running_tcb->last_block_list = task_list_block_point_get();
         }
     }
-}
-
-/*
- * Function name: task_set_wake_up_tick().
- *
- * Set the wake-up ticks for the task blocking.
- *
- * @param list_item The task state list item.
- *
- * @param wake_up_tick Task wake-up ticks.
- *
- * @return The number of current task ticks.
- *
- * \page task_set_wake_up_tick task_set_wake_up_tick
- * \ingroup task
- */
-static void task_set_wake_up_tick(list_item_t* list_item, tick_type_t wake_up_tick)
-{
-    if (NULL == list_item)
-    {
-        return ;
-    }
-
-    list_item->item_value = wake_up_tick;
 }
 
 /*
@@ -356,16 +357,19 @@ base_type_t task_create
 
     task_create_tcb->task_name = task_name;
 
+    /* Initialize the list item. */
     task_create_tcb->task_state_list_item.container = NULL;
     task_create_tcb->task_state_list_item.item_owner = task_create_tcb;
     task_create_tcb->task_state_list_item.item_value = 0;
     task_create_tcb->task_state_list_item.pre_list_item = NULL;
     task_create_tcb->task_state_list_item.next_list_item = NULL;
 
+    /* Task state machine is idle state. */
     task_create_tcb->task_state_machine_state = 0;
     task_create_tcb->task_state_machine_next_state = 0;
 
-    for(int priority = 0; priority < MAX_MESSAGE_NUMBER; priority++)
+    /* Clear message queue. */
+    for(int priority = 0; priority < MESSAGE_PRIORITY_NUMBER; priority++)
     {
         task_create_tcb->message_head[priority] = 0;
         task_create_tcb->message_tail[priority] = 0;
@@ -472,14 +476,6 @@ void task_suspend(task_tcb_t* task_tcb)
         return ;
     }
 
-    /* Clear the message queue. */
-    for(ubase_type_t message_priority = 0; message_priority < MESSAGE_PRIORITY_NUMBER; message_priority++)
-    {
-        task_tcb->message_head[message_priority] = 0;
-        task_tcb->message_tail[message_priority] = 0;
-        task_tcb->message_number[message_priority] = 0;
-    }
-
     task_add_to_suspend_list(&(task_tcb->task_state_list_item));
 }
 
@@ -496,7 +492,7 @@ void task_resume(task_tcb_t* task_tcb)
         return ;
     }
 
-    /* Clear the message queue when the task resumes from the suspended state. */
+    /* Clear the message queue and need_to_be_scheduled_number when the task resumes from the suspended state. */
     if(SUSPENDED == task_state_get(task_tcb))
     {
         for (ubase_type_t message_priority = 0; message_priority < MESSAGE_PRIORITY_NUMBER; message_priority++)
@@ -505,9 +501,9 @@ void task_resume(task_tcb_t* task_tcb)
             task_tcb->message_tail[message_priority] = 0;
             task_tcb->message_number[message_priority] = 0;
         }
+        task_tcb->need_to_be_scheduled_number = 0;
         task_add_to_ready_list(&(task_tcb->task_state_list_item));
     }
-
 }
 
 void task_suspend_all(void)
@@ -515,12 +511,12 @@ void task_suspend_all(void)
     list_item_t *cur_task_state_item = NULL;
 
     /* Suspend all tasks in ready list. */
-    for (ubase_type_t priority = 0; i < TASK_PRIORITY_NUMBER; priority++)
+    for (ubase_type_t priority = 0; priority < TASK_PRIORITY_NUMBER; priority++)
     {
         while (LOGIC_FALSE == list_is_empty(task_list_ready[priority]))
         {
             cur_task_state_item = list_get_first_item(task_list_ready[priority]);
-            task_suspend(cur_task_state_item);
+            task_suspend(cur_task_state_item->item_owner);
         }
     }
 
@@ -528,14 +524,14 @@ void task_suspend_all(void)
     while (LOGIC_FALSE == list_is_empty(task_list_block))
     {
         cur_task_state_item = list_get_first_item(task_list_block);
-        task_suspend(cur_task_state_item);
+        task_suspend(cur_task_state_item->item_owner);
     }
 
     /* Suspend all tasks in overflow block list. */
     while (LOGIC_FALSE == list_is_empty(task_list_block_overflow))
     {
         cur_task_state_item = list_get_first_item(task_list_block_overflow);
-        task_suspend(cur_task_state_item);
+        task_suspend(cur_task_state_item->item_owner);
     }
 }
 
@@ -547,7 +543,7 @@ void task_resume_all(void)
     while (LOGIC_FALSE == list_is_empty(task_list_suspend))
     {
         cur_task_state_item = list_get_first_item(task_list_suspend);
-        task_resume(cur_task_state_item);
+        task_resume(cur_task_state_item->item_owner);
     }
 }
 
@@ -704,7 +700,6 @@ base_type_t task_message_is_empty(task_tcb_t * task_tcb, message_priority_e mess
     return (task_tcb->message_number[message_priority]) ? LOGIC_FALSE : LOGIC_TRUE;
 }
 
-//todo
 base_type_t task_message_transmit(task_tcb_t * task_tcb, base_type_t transmit_message, message_priority_e message_priority)//Affect task pool
 {
     if(NULL == task_tcb)
@@ -742,9 +737,10 @@ base_type_t task_message_transmit(task_tcb_t * task_tcb, base_type_t transmit_me
 
     /* Insert the task into the ready list when the task is blocked. */
     task_need_to_be_scheduled_number_increment(task_tcb);
-    if(BLOCKED == task_state_get(task_tcb))
+    if(BLOCKED == task_state_get(task_tcb) || IDLE == task_state_get(task_tcb))
     {
         task_add_to_ready_list(&(task_tcb->task_state_list_item));
+        task_state_set(task_tcb, READY);
     }
     
     return EXE_PASS;

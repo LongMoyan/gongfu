@@ -5,10 +5,18 @@
 #include "list.h"
 
 
-/* Task states returned by eTaskGetState. */
+/* Task is aperiodic. */
+#define APERIODIC_TASK 0
+
+/* Task delay falg. */
+#define TASK_DELAY_ONGOING 1
+#define TASK_DELAY_ENDING 0
+
+
+/* Task states returned. */
 enum _task_state
 {
-    IDLE = 0;       /* The task being queried is IDLE and not in the task pool. */
+    IDLE = 0,       /* The task being queried is IDLE and not in the task pool. */
     RUNNING,        /* The task being queried is RUNNING and not in the task pool. */
     READY,          /* The task being queried is READY and in a ready list. */
     BLOCKED,        /* The task being queried is BLOCKED and in the block list. */
@@ -20,53 +28,51 @@ typedef enum _task_state task_state_e;
 /* task TCB struct */
 struct _task_tcb
 {
-    struct _task_tcb * pre_tcb;
-    struct _task_tcb * next_tcb;
+    struct _task_tcb * pre_tcb;                                                     /* A pointer to the previous task's tcb. */
+    struct _task_tcb * next_tcb;                                                    /* A pointer to the next task's tcb. */
 
-    base_type_t task_id;
-    const char* task_name;
+    base_type_t task_id;                                                            /* The id number of task, it must be unique. */
+    const char* task_name;                                                          /* The name of task. */
 
-    list_item_t task_state_list_item;
+    list_item_t task_state_list_item;                                               /* The list item of task. It will be inserted into ready list when task is ready. Similarly, when the task is in another state, it will be inserted into the corresponding list. */
 
-    base_type_t task_state_machine_state;
-    base_type_t task_state_machine_next_state;
+    base_type_t task_state_machine_state;                                           /* The current state of state machine. Each task has a state machine. */
+    base_type_t task_state_machine_next_state;                                      /* The next state of state machine. */
 
-    base_type_t receive_message[MESSAGE_PRIORITY_NUMBER][MAX_MESSAGE_NUMBER];
-    base_type_t message_head[MESSAGE_PRIORITY_NUMBER];
-    base_type_t message_tail[MESSAGE_PRIORITY_NUMBER];
-    ubase_type_t message_number[MESSAGE_PRIORITY_NUMBER];
+    base_type_t receive_message[MESSAGE_PRIORITY_NUMBER][MAX_MESSAGE_NUMBER];       /* The message queue of task. Message are also prioritized, and different message correspond to a queue. */
+    base_type_t message_head[MESSAGE_PRIORITY_NUMBER];                              /* The head position of message queue. */
+    base_type_t message_tail[MESSAGE_PRIORITY_NUMBER];                              /* The tail position of message queue. */
+    ubase_type_t message_number[MESSAGE_PRIORITY_NUMBER];                           /* The number of message queue. */
 
-    ubase_type_t need_to_be_scheduled_number;
+    ubase_type_t need_to_be_scheduled_number;                                       /* When task is need to be scheduled, it will not be zero. */
 
-    tick_type_t run_period;
+    tick_type_t run_period;                                                         /* The runnig period of task. When task is period task, it will be periodically inserted to ready list. */
 
     base_type_t task_delay_flag;
-    tick_type_t task_start_delay_tick_overflow_count;
-    tick_type_t task_wake_up_tick;
+    tick_type_t task_start_delay_tick_overflow_count;                               /* The number of overflow when task start to delay. It will be used to distinguish the scheduler counter overflow when task is reinserted into corresponding list. */
+    tick_type_t task_wake_up_tick;                                                  /* The wake-up tick that the task should wake-up. */
     list_t * last_block_list;
 
-    task_state_e task_state;
+    task_state_e task_state;                                                        /* The state of task. */
 
-    task_priority_e task_priority;
+    task_priority_e task_priority;                                                  /* The priority of task. */
 
-    void (*task_handler)(struct _task_tcb* task_tcb);
+    void (*task_handler)(struct _task_tcb* task_tcb);                               /* The function of task. */
 
-    uint8_t* task_stack;
+    uint8_t* task_stack;                                                            /* The statck of task. Reserved. */
     ubase_type_t task_stack_size;
 };
 typedef struct _task_tcb task_tcb_t;
 
 struct _task_registry
 {
-    task_tcb_t * registry_head;
-    ubase_type_t task_num;
+    task_tcb_t * registry_head;             /* The head of registry. The registry is a double linked list containing all task control blocks. */
+    ubase_type_t task_num;                  /* The number of tasks that are created. */
 };
 typedef struct _task_registry task_registry_t;
 
 
 /*
- * Function name: registry_init().
- *
  * Must be called before creating a task and starting scheduling. The 
  * registry is a double linked list containing all task control blocks.
  *
@@ -79,8 +85,6 @@ typedef struct _task_registry task_registry_t;
 base_type_t registry_init(void);
 
 /*
- * Function name: registry_login().
- *
  * Insert a task control block into the registry.
  *
  * @param task_tcb The task control block of task to be registered.
@@ -94,8 +98,6 @@ base_type_t registry_init(void);
 base_type_t registry_login(task_tcb_t* task_tcb);
 
 /*
- * Function name: registry_logout().
- *
  * Remove a task control block from the registry.
  *
  * @param task_tcb The task control block of task that needs to be 
@@ -109,8 +111,6 @@ base_type_t registry_login(task_tcb_t* task_tcb);
 base_type_t registry_logout(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_pool_init().
- *
  * Must be called before creating a task and starting scheduling. The 
  * task pool consists of multiple ready lists(one priority corresponds
  * to one ready list), tow block lists(block list and overflow block 
@@ -125,8 +125,6 @@ base_type_t registry_logout(task_tcb_t* task_tcb);
 base_type_t task_pool_init(void);
 
 /*
- * Function name: task_pool_enter().
- *
  * Insert a task into the task pool.
  *
  * @param task_tcb The task control block of task that needs to be 
@@ -141,8 +139,6 @@ base_type_t task_pool_init(void);
 base_type_t task_pool_enter(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_pool_out().
- *
  * Remove a task from the task pool.
  *
  * @param task_tcb The task control block of task that needs to be 
@@ -158,8 +154,6 @@ base_type_t task_pool_out(task_tcb_t* task_tcb);
 
 
 /*
- * Function name: task_list_ready_point_get().
- *
  * Get pointer to ready list of the task pool.
  *
  * @param priority The priority of task.
@@ -172,8 +166,6 @@ base_type_t task_pool_out(task_tcb_t* task_tcb);
 list_t * task_list_ready_point_get(task_priority_e priority);
 
 /*
- * Function name: task_list_block_point_get().
- *
  * Get pointer to block list of the task pool.
  *
  * @return The pointer to the block list.
@@ -184,8 +176,6 @@ list_t * task_list_ready_point_get(task_priority_e priority);
 list_t * task_list_block_point_get(void);
 
 /*
- * Function name: task_list_block_overflow_point_get().
- *
  * Get pointer to overflow block list of the task pool.
  *
  * @return The pointer to the overflow block list.
@@ -196,8 +186,6 @@ list_t * task_list_block_point_get(void);
 list_t * task_list_block_overflow_point_get(void);
 
 /*
- * Function name: task_list_suspend_point_get().
- *
  * Get pointer to suspend block list of the task pool.
  *
  * @return The pointer to the suspend block list.
@@ -209,8 +197,6 @@ list_t * task_list_suspend_point_get(void);
 
 
 /*
- * Function name: task_create().
- *
  * Create a task. The created task will be registered in the registry
  * and added to the task pool
  *
@@ -243,8 +229,6 @@ base_type_t task_create(
 );
 
 /*
- * Function name: task_delete().
- *
  * Delete a task. The deleted task will be unregistered from the registry 
  * and removed from the task pool.
  * 
@@ -259,8 +243,6 @@ base_type_t task_create(
 base_type_t task_delete(task_tcb_t* task_to_delete);
 
 /*
- * Function name: task_delay().
- *
  * Bolck currently running task.
  * 
  * @param tick_to_delay The number of ticks that currently running task 
@@ -272,8 +254,6 @@ base_type_t task_delete(task_tcb_t* task_to_delete);
 void task_delay(tick_type_t tick_to_delay);
 
 /*
- * Function name: task_current_running_tcb_set().
- *
  * Set the currently running task.
  * 
  * @param task_tcb The task control block of the currently running task.
@@ -284,8 +264,6 @@ void task_delay(tick_type_t tick_to_delay);
 void task_current_running_tcb_set(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_state_get().
- *
  * Get the current running status of the task.
  * 
  * @param task_tcb The task control block of the task.
@@ -298,8 +276,6 @@ void task_current_running_tcb_set(task_tcb_t* task_tcb);
 task_state_e task_state_get(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_state_set().
- *
  * Set the current running status of the task.
  * 
  * @param task_tcb The task control block of the task.
@@ -312,8 +288,6 @@ task_state_e task_state_get(task_tcb_t* task_tcb);
 void task_state_set(task_tcb_t* task_tcb, task_state_e task_new_state);
 
 /*
- * Function name: task_priority_get().
- *
  * Get the priority of the task.
  * 
  * @param task_tcb The task control block of the task.
@@ -326,8 +300,6 @@ void task_state_set(task_tcb_t* task_tcb, task_state_e task_new_state);
 task_priority_e task_priority_get(const task_tcb_t* task_tcb);
 
 /*
- * Function name: task_priority_set().
- *
  * Set the priority of the task.
  * 
  * @param task_tcb The task control block of the task.
@@ -340,8 +312,6 @@ task_priority_e task_priority_get(const task_tcb_t* task_tcb);
 void task_priority_set(task_tcb_t* task_tcb, task_priority_e new_priority);
 
 /*
- * Function name: task_suspend().
- *
  * Suspend the task. The suspended task will be added to the 
  * suspended list.
  * 
@@ -354,8 +324,6 @@ void task_priority_set(task_tcb_t* task_tcb, task_priority_e new_priority);
 void task_suspend(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_resume().
- *
  * Resume the task. The resumed task will be added to the 
  * ready list.
  * 
@@ -368,8 +336,6 @@ void task_suspend(task_tcb_t* task_tcb);
 void task_resume(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_suspend_all().
- *
  * Suspend all tasks. All tasks will be added to the suspend 
  * list.
  *
@@ -379,8 +345,6 @@ void task_resume(task_tcb_t* task_tcb);
 void task_suspend_all(void);
 
 /*
- * Function name: task_resume_all().
- *
  * Resume all tasks. All tasks will be added to the ready list.
  *
  * \page task_resume_all task_resume_all
@@ -389,8 +353,6 @@ void task_suspend_all(void);
 void task_resume_all(void);
 
 /*
- * Function name: task_add_to_ready_list().
- *
  * Insert a list item to ready list.
  * 
  * @param task_state_list_item The task state list item that needs 
@@ -405,8 +367,6 @@ void task_resume_all(void);
 base_type_t task_add_to_ready_list(list_item_t * task_state_list_item);
 
 /*
- * Function name: task_add_to_suspend_list().
- *
  * Insert a list item to suspend list.
  * 
  * @param task_state_list_item The task state list item that needs 
@@ -421,8 +381,6 @@ base_type_t task_add_to_ready_list(list_item_t * task_state_list_item);
 base_type_t task_add_to_suspend_list(list_item_t * task_state_list_item);
 
 /*
- * Function name: task_add_to_block_list().
- *
  * Insert a list item to block list.
  * 
  * @param task_state_list_item The task state list item that needs 
@@ -437,8 +395,6 @@ base_type_t task_add_to_suspend_list(list_item_t * task_state_list_item);
 base_type_t task_add_to_block_list(list_item_t * task_state_list_item);
 
 /*
- * Function name: task_add_to_block_list_overflow().
- *
  * Insert a list item to overflow block list.
  * 
  * @param task_state_list_item The task state list item that needs 
@@ -453,8 +409,6 @@ base_type_t task_add_to_block_list(list_item_t * task_state_list_item);
 base_type_t task_add_to_block_list_overflow(list_item_t * task_state_list_item);
 
 /*
- * Function name: task_number_get().
- *
  * Get the number of all tasks.
  * 
  * @return The number of all tasks.
@@ -465,8 +419,6 @@ base_type_t task_add_to_block_list_overflow(list_item_t * task_state_list_item);
 ubase_type_t task_number_get(void);
 
 /*
- * Function name: task_name_get().
- *
  * Get pointer to the task name.
  * 
  * @param task_tcb The task control block of the task.
@@ -479,8 +431,6 @@ ubase_type_t task_number_get(void);
 const char * task_name_get(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_tick_increment().
- *
  * Add one to task counter tick. Swap task_list_block and 
  * task_list_block_overflow when task counters overflow. 
  * Check whether there are blocking tasks ending blocking, 
@@ -496,8 +446,6 @@ const char * task_name_get(task_tcb_t* task_tcb);
 tick_type_t task_tick_increment(void);
 
 /*
- * Function name: task_tick_count_get().
- *
  * Get the current number of ticks for the task counter. 
  *
  * @return The number of current task ticks.
@@ -508,8 +456,6 @@ tick_type_t task_tick_increment(void);
 tick_type_t task_tick_count_get(void);
 
 /*
- * Function name: task_tick_overflow_count_get().
- *
  * Get the current number of overflow for the task counter. 
  *
  * @return The number of current task counter overflow.
@@ -521,10 +467,10 @@ tick_type_t task_tick_overflow_count_get(void);
 
 
 /*
- * Function name: task_message_transmit().
- *
- * Transmit a message to the specified task. Each task 
- * has a message queue.
+ * Transmit a message to the specified task. Message are 
+ * also prioritized, and different message correspond to 
+ * a queue. High priority messages will be received first 
+ * when task_message_receive is called.
  *
  * @param task_tcb The task control block of the task.
  *
@@ -541,10 +487,8 @@ tick_type_t task_tick_overflow_count_get(void);
 base_type_t task_message_transmit(task_tcb_t* task_tcb, base_type_t transmit_message, message_priority_e message_priority);
 
 /*
- * Function name: task_message_receive().
- *
- * Receive a message from the specified task. We will get the earliest 
- * message add to the message queue.
+ * Receive a message from the specified task. We will get the highest
+ * priority and the earliest message add to the message queue.
  *
  * @param task_tcb The task control block of the task.
  *
@@ -556,8 +500,6 @@ base_type_t task_message_transmit(task_tcb_t* task_tcb, base_type_t transmit_mes
 base_type_t task_message_receive(task_tcb_t* task_tcb);
 
 /*
- * Function name: task_message_is_empty().
- *
  * Check whether the message queue of the task is empty.
  *
  * @param task_tcb The task control block of the task.
@@ -573,8 +515,6 @@ base_type_t task_message_receive(task_tcb_t* task_tcb);
 base_type_t task_message_is_empty(task_tcb_t * task_tcb, message_priority_e message_priority);
 
 /*
- * Function name: task_message_number().
- *
  * Get the number of messages in the task message queue.
  *
  * @param task_tcb The task control block of the task.
@@ -590,8 +530,6 @@ ubase_type_t task_message_number(task_tcb_t * task_tcb, message_priority_e messa
 
 
 /*
- * Function name: task_does_not_need_to_be_scheduled().
- *
  * Check whether the task needs to be scheduled. The variable 
  * need_to_be_scheduled_number in the task control block 
  * indicates the number of times a task needs to be scheduled. 
@@ -609,8 +547,6 @@ ubase_type_t task_message_number(task_tcb_t * task_tcb, message_priority_e messa
 base_type_t task_does_not_need_to_be_scheduled(task_tcb_t * task_tcb);
 
 /*
- * Function name: task_need_to_be_scheduled_number_increment().
- *
  * Add one to the number of tasks to be scheduled. It will be called 
  * when the task receive a message or ending blocking.
  *
@@ -622,8 +558,6 @@ base_type_t task_does_not_need_to_be_scheduled(task_tcb_t * task_tcb);
 void task_need_to_be_scheduled_number_increment(task_tcb_t * task_tcb);
 
 /*
- * Function name: task_need_to_be_scheduled_number_reduction().
- *
  * Subtract one from the number of tasks to be scheduled. It will be 
  * called when the task is executed.
  *
@@ -636,8 +570,6 @@ void task_need_to_be_scheduled_number_reduction(task_tcb_t * task_tcb);
 
 
 /*
- * Function name: task_state_machine_state_get().
- *
  * Get the current state of the task state mechine. Each task has a
  * state mechine. Tasks can change the state of the state machine
  * according to different messages received
@@ -652,8 +584,6 @@ void task_need_to_be_scheduled_number_reduction(task_tcb_t * task_tcb);
 base_type_t task_state_machine_state_get(task_tcb_t * task_tcb);
 
 /*
- * Function name: task_state_machine_state_set().
- *
  * Set the current state of the task state mechine.
  *
  * @param task_tcb The task control block of the task.
@@ -669,8 +599,6 @@ base_type_t task_state_machine_state_get(task_tcb_t * task_tcb);
 base_type_t task_state_machine_state_set(task_tcb_t * task_tcb, base_type_t new_state);
 
 /*
- * Function name: task_state_machine_next_state_get().
- *
  * Get the next state of the task state mechine. 
  *
  * @param task_tcb The task control block of the task.
@@ -683,8 +611,6 @@ base_type_t task_state_machine_state_set(task_tcb_t * task_tcb, base_type_t new_
 base_type_t task_state_machine_next_state_get(task_tcb_t * task_tcb);
 
 /*
- * Function name: task_state_machine_next_state_set().
- *
  * Set the next state of the task state mechine.
  *
  * @param task_tcb The task control block of the task.
@@ -700,8 +626,6 @@ base_type_t task_state_machine_next_state_get(task_tcb_t * task_tcb);
 base_type_t task_state_machine_next_state_set(task_tcb_t * task_tcb, base_type_t new_state);
 
 /*
- * Function name: task_state_machine_state_transition().
- *
  * Convert the current state of task state mechine to the next state.
  *
  * @param task_tcb The task control block of the task.
